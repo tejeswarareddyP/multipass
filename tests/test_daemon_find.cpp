@@ -96,7 +96,7 @@ TEST_F(DaemonFind, blankQueryReturnsAllData)
                                     HasSubstr(blueprint_description_for(blueprint1_name)), HasSubstr(blueprint2_name),
                                     HasSubstr(blueprint_description_for(blueprint2_name))));
 
-    EXPECT_EQ(total_lines_of_output(stream), 7);
+    EXPECT_EQ(total_lines_of_output(stream), 9);
 }
 
 TEST_F(DaemonFind, queryForDefaultReturnsExpectedData)
@@ -115,9 +115,10 @@ TEST_F(DaemonFind, queryForDefaultReturnsExpectedData)
     mp::Daemon daemon{config_builder.build()};
 
     std::stringstream stream;
-    send_command({"find", "default"}, stream);
+    send_command({"find", "default", "--images"}, stream);
 
     EXPECT_THAT(stream.str(), AllOf(HasSubstr(mpt::default_alias), HasSubstr(mpt::default_release_info)));
+    EXPECT_THAT(stream.str(), Not(HasSubstr("No blueprints found.")));
 
     EXPECT_EQ(total_lines_of_output(stream), 2);
 }
@@ -128,8 +129,6 @@ TEST_F(DaemonFind, queryForBlueprintReturnsExpectedData)
     auto mock_blueprint_provider = std::make_unique<NiceMock<mpt::MockVMBlueprintProvider>>();
 
     static constexpr auto blueprint_name = "foo";
-
-    EXPECT_CALL(*mock_image_vault, all_info_for(_)).WillOnce(Throw(std::runtime_error("")));
 
     EXPECT_CALL(*mock_blueprint_provider, info_for(_)).WillOnce([](auto...) {
         mp::VMImageInfo info;
@@ -145,9 +144,10 @@ TEST_F(DaemonFind, queryForBlueprintReturnsExpectedData)
     mp::Daemon daemon{config_builder.build()};
 
     std::stringstream stream;
-    send_command({"find", blueprint_name}, stream);
+    send_command({"find", blueprint_name, "--blueprints"}, stream);
 
     EXPECT_THAT(stream.str(), AllOf(HasSubstr(blueprint_name), HasSubstr(blueprint_description_for(blueprint_name))));
+    EXPECT_THAT(stream.str(), Not(HasSubstr("No images found.")));
 
     EXPECT_EQ(total_lines_of_output(stream), 2);
 }
@@ -167,10 +167,10 @@ TEST_F(DaemonFind, unknownQueryReturnsError)
 
     constexpr auto phony_name = "phony";
     std::stringstream stream;
-    send_command({"find", phony_name}, trash_stream, stream);
+    send_command({"find", phony_name}, stream);
 
-    EXPECT_THAT(stream.str(),
-                HasSubstr(fmt::format("Unable to find an image or Blueprint matching \"{}\"", phony_name)));
+    EXPECT_THAT(stream.str(), HasSubstr("No images found."));
+    EXPECT_THAT(stream.str(), HasSubstr("No blueprints found."));
 }
 
 TEST_F(DaemonFind, forByRemoteReturnsExpectedData)

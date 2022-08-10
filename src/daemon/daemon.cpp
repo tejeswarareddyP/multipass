@@ -1083,81 +1083,126 @@ void mp::Daemon::find(const FindRequest* request, grpc::ServerWriterInterface<Fi
 try // clang-format on
 {
     mpl::ClientLogger<FindReply> logger{mpl::level_from(request->verbosity_level()), *config->logger, server};
+
     FindReply response;
+    response.set_show_images(request->show_images());
+    response.set_show_blueprints(request->show_blueprints());
+
     const auto default_remote{"release"};
 
     if (!request->search_string().empty())
     {
-        std::vector<std::pair<std::string, VMImageInfo>> vm_images_info;
-
-        try
-        {
-            vm_images_info = config->vault->all_info_for({"", request->search_string(), false, request->remote_name(),
-                                                          Query::Type::Alias, request->allow_unsupported()});
-        }
-        catch (const std::exception&)
+        if (request->show_images())
         {
             try
             {
-                vm_images_info.push_back(
-                    std::make_pair("", config->blueprint_provider->info_for(request->search_string())));
+                std::vector<std::pair<std::string, VMImageInfo>> vm_images_info =
+                    config->vault->all_info_for({"", request->search_string(), false, request->remote_name(),
+                                                 Query::Type::Alias, request->allow_unsupported()});
+
+                for (const auto& [remote, info] : vm_images_info)
+                {
+                    std::string name;
+                    if (info.aliases.contains(QString::fromStdString(request->search_string())))
+                    {
+                        name = request->search_string();
+                    }
+                    else
+                    {
+                        name = info.id.toStdString();
+                        name.resize(12);
+                    }
+
+                    auto entry = response.add_images_info();
+                    entry->set_os(info.os.toStdString());
+                    entry->set_release(info.release_title.toStdString());
+                    entry->set_version(info.version.toStdString());
+                    auto alias_entry = entry->add_aliases_info();
+                    if (!request->remote_name().empty() ||
+                        (request->remote_name().empty() && vm_images_info.size() > 1 && remote != default_remote))
+                    {
+                        alias_entry->set_remote_name(remote);
+                    }
+                    alias_entry->set_alias(name);
+                }
             }
             catch (const std::exception&)
             {
-                throw std::runtime_error(
-                    fmt::format("Unable to find an image or Blueprint matching \"{}\"", request->search_string()));
+                // Ignore exception, no images found
             }
         }
 
-        for (const auto& [remote, info] : vm_images_info)
+        if (request->show_blueprints())
         {
-            std::string name;
-            if (info.aliases.contains(QString::fromStdString(request->search_string())))
+            try
             {
-                name = request->search_string();
-            }
-            else
-            {
-                name = info.id.toStdString();
-                name.resize(12);
-            }
+                VMImageInfo info = config->blueprint_provider->info_for(request->search_string());
 
-            auto entry = response.add_images_info();
-            entry->set_os(info.os.toStdString());
-            entry->set_release(info.release_title.toStdString());
-            entry->set_version(info.version.toStdString());
-            auto alias_entry = entry->add_aliases_info();
-            if (!request->remote_name().empty() ||
-                (request->remote_name().empty() && vm_images_info.size() > 1 && remote != default_remote))
-            {
-                alias_entry->set_remote_name(remote);
+                std::string name;
+                if (info.aliases.contains(QString::fromStdString(request->search_string())))
+                {
+                    name = request->search_string();
+                }
+                else
+                {
+                    name = info.id.toStdString();
+                    name.resize(12);
+                }
+
+                auto entry = response.add_blueprints_info();
+                entry->set_os(info.os.toStdString());
+                entry->set_release(info.release_title.toStdString());
+                entry->set_version(info.version.toStdString());
+                auto alias_entry = entry->add_aliases_info();
+                alias_entry->set_alias(name);
             }
-            alias_entry->set_alias(name);
+            catch (const std::exception&)
+            {
+                // Ignore exception, no blueprints found
+            }
         }
     }
     else if (request->remote_name().empty())
     {
-        for (const auto& image_host : config->image_hosts)
+        if (request->show_images())
         {
-            std::unordered_set<std::string> images_found;
-            auto action = [&images_found, &default_remote, request, &response](const std::string& remote,
-                                                                               const mp::VMImageInfo& info) {
-                if ((info.supported || request->allow_unsupported()) && !info.aliases.empty() &&
-                    images_found.find(info.release_title.toStdString()) == images_found.end())
-                {
-                    add_aliases(response, remote, info, default_remote);
-                    images_found.insert(info.release_title.toStdString());
-                }
-            };
+            for (const auto& image_host : config->image_hosts)
+            {
+                std::unordered_set<std::string> images_found;
+                auto action = [&images_found, &default_remote, request, &response](const std::string& remote,
+                                                                                   const mp::VMImageInfo& info) {
+                    if ((info.supported || request->allow_unsupported()) && !info.aliases.empty() &&
+                        images_found.find(info.release_title.toStdString()) == images_found.end())
+                    {
+                        add_aliases(response, remote, info, default_remote);
+                        images_found.insert(info.release_title.toStdString());
+                    }
+                };
 
-            image_host->for_each_entry_do(action);
+                image_host->for_each_entry_do(action);
+            }
         }
 
-        auto vm_blueprints_info = config->blueprint_provider->all_blueprints();
-
-        for (const auto& info : vm_blueprints_info)
+        if (request->show_blueprints())
         {
-            add_aliases(response, "", info, "");
+            auto vm_blueprints_info = config->blueprint_provider->all_blueprints();
+
+            for (const auto& info : vm_blueprints_info)
+            {
+                if (!info.aliases.empty())
+                {
+                    auto entry = response.add_blueprints_info();
+                    for (const auto& alias : info.aliases)
+                    {
+                        auto alias_entry = entry->add_aliases_info();
+                        alias_entry->set_alias(alias.toStdString());
+                    }
+
+                    entry->set_os(info.os.toStdString());
+                    entry->set_release(info.release_title.toStdString());
+                    entry->set_version(info.version.toStdString());
+                }
+            }
         }
     }
     else
@@ -1171,6 +1216,7 @@ try // clang-format on
             add_aliases(response, remote, info, "");
         }
     }
+
     server->Write(response);
     status_promise->set_value(grpc::Status::OK);
 }
