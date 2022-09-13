@@ -63,6 +63,12 @@ public:
         qsettings->setValue(key, value);
     }
 
+    virtual void remove(const QString& key)
+    {
+        assert(qsettings);
+        qsettings->remove(key);
+    }
+
     QVariant value(const QString& key, const QVariant& default_value = QVariant()) const
     {
         return value_impl(key, default_value); // indirection avoids default args in virtual method
