@@ -11,7 +11,7 @@ license: GPL-3.0
 
 adopt-info: multipass
 confinement: strict
-base: core20
+base: core22
 
 layout:
   /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/qemu:
@@ -131,7 +131,7 @@ parts:
     - libqt5network5
     - libqt5widgets5
     - libqt5x11extras5
-    - libssl1.1
+    - libssl3
     - libxml2
     - dnsmasq-base
     - dnsmasq-utils
@@ -178,7 +178,7 @@ parts:
     plugin: nil
     override-pull: ""
     stage-packages:
-    - try: [msr-tools]
+    - on amd64: [msr-tools]
 
   terminal:
     plugin: nil
