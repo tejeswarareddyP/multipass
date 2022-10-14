@@ -27,6 +27,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 namespace mp = multipass;
 namespace mcp = multipass::cli::platform;
@@ -209,7 +210,7 @@ mp::ParseCode cmd::Mount::parse_args(mp::ArgParser* parser)
         }
     }
 
-    QRegExp map_matcher("^([0-9]+[:][0-9]+)$");
+    QRegularExpression map_matcher("^([0-9]+[:][0-9]+)$");
 
     request.clear_mount_maps();
     auto mount_maps = request.mutable_mount_maps();
@@ -220,7 +221,7 @@ mp::ParseCode cmd::Mount::parse_args(mp::ArgParser* parser)
 
         for (const auto& map : uid_maps)
         {
-            if (!map_matcher.exactMatch(map))
+            if (!map_matcher.match(map).hasMatch())
             {
                 cerr << "Invalid UID map given: " << map.toStdString() << "\n";
                 return ParseCode::CommandLineError;
@@ -251,7 +252,7 @@ mp::ParseCode cmd::Mount::parse_args(mp::ArgParser* parser)
 
         for (const auto& map : gid_maps)
         {
-            if (!map_matcher.exactMatch(map))
+            if (!map_matcher.match(map).hasMatch())
             {
                 cerr << "Invalid GID map given: " << map.toStdString() << "\n";
                 return ParseCode::CommandLineError;
