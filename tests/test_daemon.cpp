@@ -325,7 +325,7 @@ TEST_F(Daemon, blueprintsURLOverrideIsCorrect)
 
 namespace
 {
-struct DaemonCreateLaunchTestSuite : public Daemon, public WithParamInterface<std::string>
+struct DaemonCreateLaunchTestSuite : public Daemon, public WithParamInterface<std::tuple<std::string, std::string>>
 {
 };
 
@@ -388,7 +388,9 @@ TEST_P(DaemonCreateLaunchTestSuite, creates_virtual_machines)
     mp::Daemon daemon{config_builder.build()};
 
     EXPECT_CALL(*mock_factory, create_virtual_machine(_, _));
-    send_command({GetParam()});
+
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, on_creation_hooks_up_platform_prepare_source_image)
@@ -397,7 +399,9 @@ TEST_P(DaemonCreateLaunchTestSuite, on_creation_hooks_up_platform_prepare_source
     mp::Daemon daemon{config_builder.build()};
 
     EXPECT_CALL(*mock_factory, prepare_source_image(_));
-    send_command({GetParam()});
+
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, on_creation_hooks_up_platform_prepare_instance_image)
@@ -406,7 +410,9 @@ TEST_P(DaemonCreateLaunchTestSuite, on_creation_hooks_up_platform_prepare_instan
     mp::Daemon daemon{config_builder.build()};
 
     EXPECT_CALL(*mock_factory, prepare_instance_image(_, _));
-    send_command({GetParam()});
+
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, on_creation_handles_instance_image_preparation_failure)
@@ -419,7 +425,8 @@ TEST_P(DaemonCreateLaunchTestSuite, on_creation_handles_instance_image_preparati
     EXPECT_CALL(*mock_factory, remove_resources_for(_));
 
     std::stringstream err_stream;
-    send_command({GetParam()}, trash_stream, err_stream);
+    const auto [command, _] = GetParam();
+    send_command({command}, trash_stream, err_stream);
 
     EXPECT_THAT(err_stream.str(), AllOf(HasSubstr("failed"), HasSubstr(cause)));
 }
@@ -432,7 +439,8 @@ TEST_P(DaemonCreateLaunchTestSuite, generates_name_on_creation_when_client_does_
     mp::Daemon daemon{config_builder.build()};
 
     std::stringstream stream;
-    send_command({GetParam()}, stream);
+    const auto [command, _] = GetParam();
+    send_command({command}, stream);
 
     EXPECT_THAT(stream.str(), HasSubstr(expected_name));
 }
@@ -575,7 +583,8 @@ TEST_P(DaemonCreateLaunchTestSuite, default_cloud_init_grows_root_fs)
             }
         }));
 
-    send_command({GetParam()});
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, adds_ssh_keys_to_cloud_init_config)
@@ -592,18 +601,22 @@ TEST_P(DaemonCreateLaunchTestSuite, adds_ssh_keys_to_cloud_init_config)
             EXPECT_THAT(ssh_keys_stanza, YAMLNodeContainsSubString(expected_key));
         }));
 
-    send_command({GetParam()});
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, adds_pollinate_user_agent_to_cloud_init_config)
 {
+    const auto [command, alias] = GetParam();
     auto mock_factory = use_a_mock_vm_factory();
     std::vector<std::pair<std::string, std::string>> const& expected_pollinate_map{
         {"path", "/etc/pollinate/add-user-agent"},
         {"content", fmt::format("multipass/version/{} # written by Multipass\n"
                                 "multipass/driver/mock-1234 # written by Multipass\n"
-                                "multipass/host/{}-{} # written by Multipass\n",
-                                multipass::version_string, QSysInfo::productType(), QSysInfo::productVersion())},
+                                "multipass/host/{}-{} # written by Multipass\n"
+                                "multipass/alias/{} # written by Multipass\n",
+                                multipass::version_string, QSysInfo::productType(), QSysInfo::productVersion(),
+                                alias.empty() ? "default" : alias)},
     };
     mp::Daemon daemon{config_builder.build()};
 
@@ -620,7 +633,7 @@ TEST_P(DaemonCreateLaunchTestSuite, adds_pollinate_user_agent_to_cloud_init_conf
                 }
             }));
 
-    send_command({GetParam()});
+    send_command({command, alias});
 }
 
 TEST_F(DaemonCreateLaunchAliasTestSuite, blueprintFoundPassesExpectedAliases)
@@ -984,7 +997,8 @@ TEST_P(DaemonCreateLaunchTestSuite, blueprint_found_passes_expected_data)
     config_builder.vault = std::move(mock_image_vault);
     mp::Daemon daemon{config_builder.build()};
 
-    send_command({GetParam()});
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(DaemonCreateLaunchTestSuite, blueprint_not_found_passes_expected_data)
@@ -1006,7 +1020,8 @@ TEST_P(DaemonCreateLaunchTestSuite, blueprint_not_found_passes_expected_data)
     config_builder.vault = std::move(mock_image_vault);
     mp::Daemon daemon{config_builder.build()};
 
-    send_command({GetParam()});
+    const auto [command, _] = GetParam();
+    send_command({command});
 }
 
 TEST_P(LaunchWithNoNetworkCloudInit, no_network_cloud_init)
@@ -1231,7 +1246,8 @@ TEST_P(LaunchStorageCheckSuite, launch_fails_with_invalid_data_directory)
     EXPECT_THAT(stream.str(), HasSubstr("Failed to determine information about the volume containing"));
 }
 
-INSTANTIATE_TEST_SUITE_P(Daemon, DaemonCreateLaunchTestSuite, Values("launch", "test_create"));
+INSTANTIATE_TEST_SUITE_P(Daemon, DaemonCreateLaunchTestSuite,
+                         Combine(Values("launch", "test_create"), Values("foo", "")));
 INSTANTIATE_TEST_SUITE_P(Daemon, MinSpaceRespectedSuite,
                          Combine(Values("test_create", "launch"), Values("--memory", "--disk"),
                                  Values("1024m", "2Gb", "987654321")));
